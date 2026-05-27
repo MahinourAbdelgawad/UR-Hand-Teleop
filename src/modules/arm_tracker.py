@@ -1,6 +1,5 @@
 # Arm tracker built on MediaPipe to extract arm poses from webcam
 
-
 import cv2 as cv
 import mediapipe
 from mediapipe.tasks.python.vision import drawing_utils
