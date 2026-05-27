@@ -18,15 +18,16 @@ def main():
 
         if not ret: break
 
+        frame = cv.flip(frame, 1)
         frame = tracker.process_frame(frame)
 
         shoulder_angle, elbow_angle = tracker.get_angles()
 
         if shoulder_angle is not None:
-            sim.set_joint(1, mapper.map_(shoulder_angle, "SHOULDER"))
+            sim.set_joint(1, mapper.map_angle(shoulder_angle, "SHOULDER", 0.0))
 
         if elbow_angle is not None:
-            sim.set_joint(2, mapper.map_(elbow_angle, "ELBOW"))
+            sim.set_joint(2, mapper.map_angle(elbow_angle, "ELBOW", 0.0))
 
         sim.step()
 

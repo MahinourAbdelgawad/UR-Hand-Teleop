@@ -11,6 +11,7 @@ class MujocoWrapper:
             # set default pose
             # TODO: tweak this default pose
             self.data.qpos[:6] = [0, -np.pi/4, -np.pi/2, -np.pi/4, np.pi/2, 0]
+            self.data.ctrl[:6] = [0, -np.pi/4, -np.pi/2, -np.pi/4, np.pi/2, 0]
             mujoco.mj_forward(self.model, self.data)
 
             self.viewer = None
@@ -62,7 +63,7 @@ class MujocoWrapper:
         try:
             if self.viewer:
                 self.viewer.close()
-                
+
         except Exception as e:
             print(f"Error closing Mujoco Viewer: {e}")      
      
