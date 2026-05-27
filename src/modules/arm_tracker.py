@@ -101,46 +101,48 @@ class ArmTracker:
 
         return annotated_image
 
-    def track(self):
+    def process_frame(self, frame):
         try:
-            cap = cv.VideoCapture(0)
+            self._timestamp_ms += 1
+            rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+            mp_image = mediapipe.Image(image_format= mediapipe.ImageFormat.SRGB, data=rgb)
+            self.landmarker.detect_async(mp_image, self._timestamp_ms)
 
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
+            if self._latest_result and self._latest_result.pose_landmarks:
+                frame = self._draw_landmarks(frame, self._latest_result)
 
-                self._timestamp_ms += 1
-                rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-                mp_image = mediapipe.Image(image_format= mediapipe.ImageFormat.SRGB, data=rgb)
-                self.landmarker.detect_async(mp_image, self._timestamp_ms)
-
-                if self._latest_result and self._latest_result.pose_landmarks:
-                    lms = self._latest_result.pose_landmarks[0]
-
-                    # check viz first
-                    if lms[self.RIGHT_ELBOW_ID].visibility > 0.5 and lms[self.RIGHT_SHOULDER_ID].visibility > 0.5 and lms[self.RIGHT_WRIST_ID].visibility > 0.5:
-                        shoulder = self._get_landmark_xyz(lms, self.RIGHT_SHOULDER_ID)
-                        elbow = self._get_landmark_xyz(lms, self.RIGHT_ELBOW_ID)
-                        wrist = self._get_landmark_xyz(lms, self.RIGHT_WRIST_ID)
-
-                        elbow_angle = self._angle_between(shoulder, elbow, wrist)
-                        shoulder_angle = self._angle_between(elbow, shoulder, np.array([shoulder[0], shoulder[1] - 1, shoulder[2]]))
-
-                        print(f"Shoulder: {shoulder_angle:.1f}°  Elbow: {elbow_angle:.1f}°")
-
-                    frame = self._draw_landmarks(frame, self._latest_result)
-
-                cv.imshow("Arm Tracker", frame)
-                if cv.waitKey(1) & 0xFF == ord('q'):
-                    break
-
-            cap.release()
-            cv.destroyAllWindows()
-            self.landmarker.close()
+            return frame 
 
         except Exception as e:
-            print(f"Error running track: {e}")
+            print(f"Error processing frame: {e}")
+            return frame 
+
+    def get_angles(self):
+        if not self._latest_result or not self._latest_result.pose_landmarks:
+            return None, None
+        
+        lms = self._latest_result.pose_landmarks[0]
+    
+        if lms[self.RIGHT_ELBOW_ID].visibility > 0.5 and lms[self.RIGHT_SHOULDER_ID].visibility > 0.5 and lms[self.RIGHT_WRIST_ID].visibility > 0.5:
+            shoulder = self._get_landmark_xyz(lms, self.RIGHT_SHOULDER_ID)
+            elbow = self._get_landmark_xyz(lms, self.RIGHT_ELBOW_ID)
+            wrist = self._get_landmark_xyz(lms, self.RIGHT_WRIST_ID)
+
+            elbow_angle = self._angle_between(shoulder, elbow, wrist)
+            shoulder_angle = self._angle_between(elbow, shoulder, np.array([shoulder[0], shoulder[1] - 1, shoulder[2]]))
+
+            print(f"Shoulder: {shoulder_angle:.1f}°  Elbow: {elbow_angle:.1f}°")
+
+            return shoulder_angle, elbow_angle
+
+        return None, None 
+    
+
+    def close(self):
+        self.landmarker.close()
+
+
+
                         
 
 

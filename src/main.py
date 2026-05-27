@@ -18,7 +18,7 @@ def main():
 
         if not ret: break
 
-        tracker.process_frame(frame)
+        frame = tracker.process_frame(frame)
 
         shoulder_angle, elbow_angle = tracker.get_angles()
 
@@ -36,8 +36,9 @@ def main():
 
     sim.close()
     capture.release()
+    tracker.close()
     cv.destroyAllWindows()
-    
+
 
 if __name__ == "__main__":
     try:
