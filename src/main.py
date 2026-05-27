@@ -1,6 +1,6 @@
-from modules.arm_tracker import ArmTracker
-from modules.angle_mapper import AngleMapper
-from modules.mujoco_wrapper import MujocoWrapper
+from src.modules.arm_tracker import ArmTracker
+from src.modules.angle_mapper import AngleMapper
+from src.modules.mujoco_wrapper import MujocoWrapper
 import cv2 as cv
 
 
