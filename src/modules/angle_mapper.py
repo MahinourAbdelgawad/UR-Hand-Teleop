@@ -4,14 +4,14 @@ class AngleMapper:
     def __init__(self):
         # TODO: allow other robot joint limits
 
-        self.HUMAN_ELBOW_MIN = 30.0 
-        self.HUMAN_ELBOW_MAX = 175.0
+        self.HUMAN_ELBOW_MIN = 100.0 
+        self.HUMAN_ELBOW_MAX = 150.0
 
         self.HUMAN_SHOULDER_MIN = 0.0
         self.HUMAN_SHOULDER_MAX = 180.0
 
 
-        self.UR5_ELBOW_MIN = np.radians(-160)
+        self.UR5_ELBOW_MIN = np.radians(-150)
         self.UR5_ELBOW_MAX = np.radians(0)
 
         self.UR5_SHOULDER_MIN = np.radians(-180)

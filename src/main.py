@@ -2,6 +2,7 @@ from src.modules.arm_tracker import ArmTracker
 from src.modules.angle_mapper import AngleMapper
 from src.modules.mujoco_wrapper import MujocoWrapper
 import cv2 as cv
+import numpy as np
 
 
 def main():
@@ -27,7 +28,9 @@ def main():
             sim.set_joint(1, mapper.map_angle(shoulder_angle, "SHOULDER", 0.0))
 
         if elbow_angle is not None:
-            sim.set_joint(2, mapper.map_angle(elbow_angle, "ELBOW", 0.0))
+            mapped = mapper.map_angle(elbow_angle, "ELBOW", 0.0)
+            print(f"Elbow raw: {elbow_angle:.1f} deg  ->  mapped: {np.degrees(mapped):.1f} deg")
+            sim.set_joint(2, mapped)
 
         sim.step()
 
