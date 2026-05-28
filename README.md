@@ -1,4 +1,12 @@
 # ArmBot
+![License](https://img.shields.io/badge/License-MIT-green?logo=github)
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose%20Landmarker-blue?logo=google)
+![MuJoCo](https://img.shields.io/badge/MuJoCo-Physics%20Simulation-orange)
+![OpenCV](https://img.shields.io/badge/OpenCV-Computer%20Vision-blue?logo=opencv)
+![ROS](https://img.shields.io/badge/Robot-UR5e-lightgrey?logo=ros)
+![Focus](https://img.shields.io/badge/Focus-Human%20Robot%20Mirroring-red)
+![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen)
 
 > Control a simulated robotic arm using your own arm.
 > Runs on MuJoCo using a UR5e robot arm
@@ -112,3 +120,6 @@ tracker = ArmTracker(model_path="mp_models/pose_landmarker_full.task")
 - Hand to Gripper control
 - Side-by-side display combining the webcam feed and simulation render into a single window
 - Support for additional robot models
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
