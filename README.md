@@ -1,4 +1,12 @@
 # ArmBot
+![License](https://img.shields.io/badge/License-MIT-green?logo=github)
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose%20Landmarker-blue?logo=google)
+![MuJoCo](https://img.shields.io/badge/MuJoCo-Physics%20Simulation-orange)
+![OpenCV](https://img.shields.io/badge/OpenCV-Computer%20Vision-blue?logo=opencv)
+![ROS](https://img.shields.io/badge/Robot-UR5e-lightgrey?logo=ros)
+![Focus](https://img.shields.io/badge/Focus-Human%20Robot%20Mirroring-red)
+![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen)
 
 > Control a simulated robotic arm using your own arm.
 > Runs on MuJoCo using a UR5e robot arm
