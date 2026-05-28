@@ -112,3 +112,6 @@ tracker = ArmTracker(model_path="mp_models/pose_landmarker_full.task")
 - Hand to Gripper control
 - Side-by-side display combining the webcam feed and simulation render into a single window
 - Support for additional robot models
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
