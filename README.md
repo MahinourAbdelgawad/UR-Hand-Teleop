@@ -1,4 +1,4 @@
-# ArmBot
+# Arm Teleoperator
 ![License](https://img.shields.io/badge/License-MIT-green?logo=github)
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose%20Landmarker-blue?logo=google)
@@ -24,8 +24,8 @@ Point your webcam at yourself, raise or bend your arm, and watch the UR5e follow
 
 Clone the repository and set up a virtual environment:
 ```bash
-git clone https://github.com/MahinourAbdelgawad/ArmBot
-cd armbot
+git clone https://github.com/MahinourAbdelgawad/Arm-Teleoperator
+cd Arm-Teleoperator
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -63,7 +63,7 @@ Two windows will open: your webcam feed with skeleton overlay, and the MuJoCo vi
 ## Project Structure
 
 ```
-ArmBot/
+Arm-Teleoperator/
 ├── src/
 │   ├── main.py
 │   └── modules/
