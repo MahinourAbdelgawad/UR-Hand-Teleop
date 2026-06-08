@@ -48,6 +48,11 @@ class MujocoWrapper:
         except Exception as e:
             print(f"Error setting joint {joint_index} to angle {angle_rad}: {e}")
 
+    
+    def set_gripper(self, status):
+        value = 255 if status else 0
+        self.data.ctrl[6] = np.clip(value, 0, 255)
+
         
     def step(self):
         """
