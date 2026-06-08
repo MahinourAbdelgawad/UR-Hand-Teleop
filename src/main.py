@@ -1,11 +1,29 @@
 import cv2 as cv
+import numpy as np
 from src.modules.hand_tracker import HandTracker
 from src.modules.mujoco_wrapper import MujocoWrapper
+from src.modules.ik_solver import IKSolver
+from src.modules.depth_estimator import DepthEstimator
 
+X_MIN, X_MAX = -0.4, 0.4
+Y_MIN, Y_MAX = -0.4, 0.4
+Z_MIN, Z_MAX =  0.2, 0.7
+
+def assemble_target(palm_x, palm_y, depth):
+    # palm_x and palm_y are normalized 0-1 
+    # depth is in meters from AprilTag, None if tag not visible
+    x = X_MIN + palm_x * (X_MAX - X_MIN)
+    y = Y_MIN + palm_y * (Y_MAX - Y_MIN)
+    z = float(np.clip(depth, Z_MIN, Z_MAX)) if depth is not None else 0.4
+
+    return np.array([x, y, z])
 
 def main():
     tracker = HandTracker()
     sim = MujocoWrapper()
+    estimator = DepthEstimator()
+    IK = IKSolver(sim.model, sim.data)
+
     sim.launch()
 
     cap = cv.VideoCapture(0)
@@ -22,6 +40,13 @@ def main():
 
         if state is not None:
             palm_x, palm_y, is_closed = state
+            depth = estimator.estimate(frame)
+
+            target = assemble_target(palm_x, palm_y, depth)  # your coord mapping function
+            q = IK.solve(target)
+
+            for i in range(6):
+                sim.set_joint(i, q[i])
 
             sim.set_gripper(is_closed)
 
