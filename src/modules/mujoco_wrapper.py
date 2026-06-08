@@ -22,6 +22,7 @@ class MujocoWrapper:
             mujoco.mj_forward(self.model, self.data)
 
             self.viewer = None
+            # print('DOFs:', self.model.nv, '  Actuators:', self.model.nu)
 
 
         except Exception as e:
