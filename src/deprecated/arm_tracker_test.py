@@ -1,4 +1,4 @@
-from ..modules.arm_tracker import ArmTracker
+from .arm_tracker import ArmTracker
 
 try:
     tracker = ArmTracker()
