@@ -15,12 +15,22 @@ class HandTracker:
         Hand landmarker gives 21 landmarks
         Palm centroid: averages of the MCPs aka 5, 9, 13, 17
         For gesture detection: finger tips and pips 
+
+        Thumbs up to arm, thumbs down to disarm
+        Thumb tip = 4, thumb IP = 3, thumb MCP = 2, thumb CMC = 1
     """
     def __init__(self, model_path = "mp_models/hand_landmarker.task"):
         try:
             self.finger_tips = [8,12,16,20] # index - middle - ring - pinky
             self.finger_pips = [6, 10, 14, 18]
             self.MCPs = [0, 5, 9, 13, 17]
+
+            self.thumb_tip = 4
+            self.thumb_IP = 3
+            self.thumb_MCP = 2
+            self.thumb_CMC = 1 
+
+            self.wrist = 0
 
             base_options = python.BaseOptions(model_asset_path = model_path)
             options = vision.HandLandmarkerOptions(    
@@ -37,6 +47,8 @@ class HandTracker:
             self._latest_result = None
             self._latest_frame  = None
             self._timestamp_ms  = 0
+
+            self._reference_pos = None 
 
         except Exception as e:
             print(f"Error initializating Hand Tracker: {e}")
@@ -62,9 +74,34 @@ class HandTracker:
         
         except Exception as e:
             print(f"Error finding palm center: {e}")
+
+
+    def _thumb_extended(self, landmarks):
+        """
+        True when the thumb tip is farther from the wrist than the thumb MCP
+        """
+        wrist = np.array([landmarks[self.wrist].x, landmarks[self.wrist].y])
+        tip = np.array([landmarks[self.thumb_tip].x, landmarks[self.thumb_tip].y])
+        mcp = np.array([landmarks[self.thumb_MCP].x, landmarks[self.thumb_MCP].y])
+        return np.linalg.norm(tip - wrist) > np.linalg.norm(mcp - wrist) * 1.1
+ 
+    def _thumb_pointing_up(self, landmarks):
+        """
+        True when thumb tip is above the thumb MCP (in image y, so smaller = higher)
+        """
+        return landmarks[self.thumb_tip].y < landmarks[self.thumb_MCP].y - 0.05
+ 
+    def _thumb_pointing_down(self, landmarks):
+        """
+        True when thumb tip is below the thumb MCP
+        """
+        return landmarks[self.thumb_tip].y > landmarks[self.thumb_MCP].y + 0.05
     
     
     def get_hand_state(self):
+        """
+        Returns: palm_x, palm_y, closed, gesture, landmarks
+        """
         try:
             if not self._latest_result or not self._latest_result.hand_landmarks:
                 return None
@@ -73,11 +110,53 @@ class HandTracker:
 
             palm_x, palm_y = self._get_palm_center(landmarks)
             closed = self._is_closed(landmarks)
+            gesture  = self._detect_gesture(landmarks)
 
-            return palm_x, palm_y, closed
+            return palm_x, palm_y, closed, gesture, landmarks
         
         except Exception as e:
             print(f"Error retrieving hand state: {e}")
+
+    def _detect_gesture(self, landmarks):
+        """
+        Returns one of: thumb_up, thumb_down, closed, open, None
+        """
+        fingers_closed = self._fingers_closed(landmarks)
+        thumb_ext = self._thumb_extended(landmarks)
+ 
+        if fingers_closed and thumb_ext:
+            if self._thumb_pointing_up(landmarks):
+                return "thumb_up"
+            
+            if self._thumb_pointing_down(landmarks):
+                return "thumb_down"
+ 
+        if fingers_closed and not thumb_ext:
+            return "closed"
+ 
+        if not fingers_closed:
+            return "open"
+ 
+        return None
+    
+    def set_reference(self, palm_x, palm_y):
+        """
+        Callwd when the tracking gesture is first detected
+        """
+        self._reference_pos = np.array([palm_x, palm_y])
+
+    def get_delta(self, palm_x, palm_y):
+        """
+        Return coords relative to the stored reference
+        Returns None if no reference has been set
+        """
+        if self._reference_pos is None:
+            return None
+        
+        return np.array([palm_x, palm_y]) - self._reference_pos
+    
+    def clear_reference(self):
+        self._reference_pos = None 
     
     def _result_callback(self, result, output_image, timestamp_ms):
         self._latest_result = result
@@ -106,7 +185,6 @@ class HandTracker:
         except Exception as e:
             print(f"Error drawing landmarks: {e}")
         
-
 
     def process_frame(self, frame):
         try:
