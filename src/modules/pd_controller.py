@@ -12,7 +12,7 @@ class PDController:
         self.max_step = max_step
         self.dt = dt
 
-        self._target = None 
+        self.target = None 
         self._last_error = np.zeros(3)
         self._last_time = time.monotonic()
 
@@ -22,13 +22,13 @@ class PDController:
         Initialize the controller to the current arm position
         Called every time the system is armed (aka thumbs up)
         """
-        self._target = np.asarray(current_ee_pos, dtype=float).copy()
+        self.target = np.asarray(current_ee_pos, dtype=float).copy()
         self._last_error = np.zeros(3)
         self._last_time = time.monotonic()
 
 
-    def set_target(self, target = None):
-        self._target = np.asarray(target, dtype=float).copy()
+    def settarget(self, target = None):
+        self.target = np.asarray(target, dtype=float).copy()
 
 
     def compute(self, current_pos):
@@ -36,7 +36,7 @@ class PDController:
         compute delta between current and target
         """
         try:
-            if self._target is None:
+            if self.target is None:
                 return np.zeros(3)
             
             now = time.monotonic()
@@ -44,7 +44,7 @@ class PDController:
 
             self._last_time = now 
 
-            error = self._target - np.asarray(current_pos, dtype=float)
+            error = self.target - np.asarray(current_pos, dtype=float)
             error_dt = (error - self._last_error) / dt 
             
             command = (self.kp * error) + (self.kd * error_dt) 

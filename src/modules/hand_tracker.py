@@ -100,7 +100,7 @@ class HandTracker:
     
     def get_hand_state(self):
         """
-        Returns: palm_x, palm_y, closed, gesture, landmarks
+        Returns: dict with keys: palm_x, palm_y, is_closed, gesture, landmarks
         """
         try:
             if not self._latest_result or not self._latest_result.hand_landmarks:
@@ -112,7 +112,13 @@ class HandTracker:
             closed = self._is_closed(landmarks)
             gesture  = self._detect_gesture(landmarks)
 
-            return palm_x, palm_y, closed, gesture, landmarks
+            return {
+                "palm_x": palm_x,
+                "palm_y": palm_y,
+                "is_closed": closed,
+                "gesture": gesture,
+                "landmarks": landmarks
+            }
         
         except Exception as e:
             print(f"Error retrieving hand state: {e}")
@@ -121,7 +127,7 @@ class HandTracker:
         """
         Returns one of: thumb_up, thumb_down, closed, open, None
         """
-        fingers_closed = self._fingers_closed(landmarks)
+        fingers_closed = self._is_closed(landmarks)
         thumb_ext = self._thumb_extended(landmarks)
  
         if fingers_closed and thumb_ext:
