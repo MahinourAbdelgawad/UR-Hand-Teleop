@@ -5,7 +5,7 @@ import numpy as np
 
 class IKSolver:
     def __init__(self, model, data, limits, site_name="attachment_site",
-        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01, adaptive_damping = True):
+        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01, adaptive_damping=True):
 
         self.model = model
         self.data = data
@@ -14,6 +14,7 @@ class IKSolver:
         self.tol = tol
         self.step_size = step_size
         self.damping = damping
+        self.adaptive_damping = adaptive_damping
 
         if self.site_id == -1:
             raise ValueError(f"Site '{site_name}' not found in model. "
@@ -29,15 +30,20 @@ class IKSolver:
         Return position clipped to the workspace limits
         """
         return np.array([
-            np.clip(position[0], self.limits["x"]),
-            np.clip(position[1], self.limits["y"]),
-            np.clip(position[2], self.limits["z"]),
+            np.clip(position[0], self.limits["x"][0], self.limits["x"][1]),
+            np.clip(position[1], self.limits["y"][0], self.limits["y"][1]),
+            np.clip(position[2], self.limits["z"][0], self.limits["z"][1]),
         ])
 
     def solve(self, target_pos, q_init=None):
+        if self.model is None or self.data is None:
+            raise RuntimeError("Model or data is None")
+        
         target_pos = self._clamp(np.asarray(target_pos, dtype=float))
  
         if q_init is not None:
+            if len(q_init) != 6:
+                raise ValueError(f"q_init must be 6-dimensional, got {len(q_init)}")
             self.data.qpos[:6] = q_init.copy()
  
         for i in range(self.max_iter):
@@ -64,6 +70,9 @@ class IKSolver:
  
         This is the method used by the PD control loop
         """
+        if self.model is None or self.data is None:
+            raise RuntimeError("Model or data is None")
+        
         # Safety cap
         norm = np.linalg.norm(delta_pos)
         if norm > max_delta_norm:
@@ -76,6 +85,11 @@ class IKSolver:
 
     def get_end_effector_pos(self):
         """Returns current end effector position in world frame."""
+        if self.model is None or self.data is None:
+            raise RuntimeError("Model or data is None")
+        if self.site_id < 0 or self.site_id >= len(self.data.site_xpos):
+            raise RuntimeError(f"Invalid site_id: {self.site_id}")
+        
         mujoco.mj_forward(self.model, self.data)
         return self.data.site_xpos[self.site_id].copy()
 

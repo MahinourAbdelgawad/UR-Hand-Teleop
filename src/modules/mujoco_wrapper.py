@@ -58,8 +58,9 @@ class MujocoWrapper:
         Set a single joint to a target angle in radians
         """
         try:
+            if self.data is None or joint_index < 0 or joint_index >= len(self.data.ctrl):
+                raise IndexError(f"Invalid joint index {joint_index}, available: {len(self.data.ctrl) if self.data else 0}")
             self.data.ctrl[joint_index] = angle_rad
-
 
         except Exception as e:
             print(f"Error setting joint {joint_index} to angle {angle_rad}: {e}")
@@ -84,8 +85,17 @@ class MujocoWrapper:
 
     
     def set_gripper(self, status):
-        value = 255 if status else 0
-        self.data.ctrl[6] = np.clip(value, 0, 255)
+        """
+        Set gripper command. Expects gripper actuator at index 6.
+        """
+        if self.data is None or len(self.data.ctrl) <= 6:
+            return
+        
+        try:
+            value = 255 if status else 0
+            self.data.ctrl[6] = np.clip(value, 0, 255)
+        except Exception as e:
+            print(f"Error setting gripper: {e}")
 
         
     def step(self):

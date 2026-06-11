@@ -28,6 +28,7 @@ FRAME = None
 
 # Thread safety
 STATE_LOCK = threading.Lock()
+MUJOCO_LOCK = threading.Lock()  # Protects all MuJoCo operations
 
 
 def clamp(position):
@@ -82,7 +83,7 @@ def camera_thread(tracker, estimator, cap, stop_event):
 
 
 def control_thread(tracker, sim, solver, pd, stop_event):
-    global HAND_STATE, DEPTH   
+    global HAND_STATE, DEPTH, MUJOCO_LOCK
 
     armed = False
     ref_palm_x = 0.0
@@ -105,17 +106,24 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                 px, py = state["palm_x"], state["palm_y"]
 
                 gripper_closed = is_closed
+                
+                if gesture:
+                    print(f"Detected gesture: {gesture}, armed: {armed}")
 
-                if gesture == "thumbs_up" and not armed:
+                if gesture == "thumb_up" and not armed:
                     armed = True
                     ref_palm_x = px
                     ref_palm_y = py
                     ref_depth = dep
-                    ref_ee_pos = solver.get_end_effector_pos().copy()
-                    pd.reset(ref_ee_pos)
+                    print("ARM ACTIVATED")
+                    
+                    with MUJOCO_LOCK:
+                        ref_ee_pos = solver.get_end_effector_pos().copy()
+                        pd.reset(ref_ee_pos)
 
-                elif gesture == "thumbs_down" and armed:
+                elif gesture == "thumb_down" and armed:
                     armed = False
+                    print("ARM DEACTIVATED")
 
                 if armed:
                     dx_img = px - ref_palm_x
@@ -134,20 +142,22 @@ def control_thread(tracker, sim, solver, pd, stop_event):
 
                         desired = ref_ee_pos + np.array([dx_world, dy_world, dz_world])
                         desired = clamp(desired)
-                        pd.set_desired(desired)
+                        pd.settarget(desired)
 
-                    current_ee = solver.get_end_effector_pos()
-                    delta = pd.compute(current_ee)
-                    new_q = solver.solve_incremental(delta)
-                    sim.set_joints(new_q)
+                    with MUJOCO_LOCK:
+                        current_ee = solver.get_end_effector_pos()
+                        delta = pd.compute(current_ee)
+                        new_q = solver.solve_incremental(delta)
+                        sim.set_joints(new_q)
             except Exception as e:
                 print(f"Error in control thread: {e}")
                 armed = False
 
-        sim.set_gripper(gripper_closed)
-        if not sim.step():
-            print("Simulation step failed, exiting control loop")
-            break
+        with MUJOCO_LOCK:
+            sim.set_gripper(gripper_closed)
+            if not sim.step():
+                print("Simulation step failed, exiting control loop")
+                break
 
         elapsed = time.monotonic() - t0
         sleep = CONTROL_PERIOD - elapsed
@@ -210,7 +220,8 @@ def main():
 
                 ee_pos = None
                 try:
-                    ee_pos = IK.get_end_effector_pos()
+                    with MUJOCO_LOCK:
+                        ee_pos = IK.get_end_effector_pos()
                 except Exception:
                     pass
 
