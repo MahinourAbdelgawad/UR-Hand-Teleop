@@ -47,7 +47,7 @@ class PDController:
             error = self.target - np.asarray(current_pos, dtype=float)
             error_dt = (error - self._last_error) / dt 
             
-            command = (self.kp * error) + (self.kd * error_dt) 
+            command = (self.kp * error) #+ (self.kd * error_dt)# 
 
             # cap for safety
             norm = np.linalg.norm(command)
