@@ -44,7 +44,7 @@ class DepthEstimator:
             raw_z = self._detect_raw(frame)
  
             if raw_z is not None:
-                self._missing_ctr = 0
+                self._missing = 0
                 if self._filtered_z is None:
                     self._filtered_z = raw_z #cold start
 
@@ -52,8 +52,8 @@ class DepthEstimator:
                     # EMA: new = alpha*raw + (1-alpha)*old
                     self._filtered_z = self.alpha * raw_z + (1.0 - self.alpha) * self._filtered_z
             else:
-                self._missing_ctr += 1
-                if self._missing_ctr > self.max_missing:
+                self._missing += 1
+                if self._missing > self.max_missing:
                     self._filtered_z = None
     
             return self._filtered_z
@@ -64,7 +64,7 @@ class DepthEstimator:
 
     def reset(self):
         self._filtered_z = None 
-        self._missing_ctr = 0
+        self._missing = 0
         
 
     def _detect_raw(self, frame):

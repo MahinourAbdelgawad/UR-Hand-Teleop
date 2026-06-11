@@ -111,8 +111,8 @@ class MujocoWrapper:
 
         return arm.compile()
 
-
-     
-
+        
+    def get_qpos(self):
+        return self.data.qpos[:6].copy()
 
         

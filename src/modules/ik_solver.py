@@ -4,8 +4,8 @@ import numpy as np
 #TODO: go over this and verify the vibe coded logic
 
 class IKSolver:
-    def __init__(self, model, data, site_name="attachment_site",
-        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01, adaptive_damping = True,):
+    def __init__(self, model, data, limits, site_name="attachment_site",
+        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01, adaptive_damping = True):
 
         self.model = model
         self.data = data
@@ -19,11 +19,7 @@ class IKSolver:
             raise ValueError(f"Site '{site_name}' not found in model. "
                              f"Check the site name using mj_id2name.")
         
-        self.limits = { # workspace limits
-            "x": (-0.7, 0.7),
-            "y": (-0.7, 0.7),
-            "z": (0.05, 0.9),
-        }
+        self.limits = limits
 
         self.joint_limit_margin = 0.02
 
@@ -117,5 +113,5 @@ class IKSolver:
         for j in range(6):
             lo = self.model.jnt_range[j, 0] + m
             hi = self.model.jnt_range[j, 1] - m
-            
+
             self.data.qpos[j] = np.clip(self.data.qpos[j], lo, hi)
