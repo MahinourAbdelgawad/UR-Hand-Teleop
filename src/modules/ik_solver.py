@@ -5,7 +5,7 @@ import numpy as np
 
 class IKSolver:
     def __init__(self, model, data, site_name="attachment_site",
-        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01):
+        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01, adaptive_damping = True,):
 
         self.model = model
         self.data = data
@@ -18,62 +18,65 @@ class IKSolver:
         if self.site_id == -1:
             raise ValueError(f"Site '{site_name}' not found in model. "
                              f"Check the site name using mj_id2name.")
+        
+        self.limits = { # workspace limits
+            "x": (-0.7, 0.7),
+            "y": (-0.7, 0.7),
+            "z": (0.05, 0.9),
+        }
+
+        self.joint_limit_margin = 0.02
+
+
+    def _clamp(self, position):
+        """
+        Return position clipped to the workspace limits
+        """
+        return np.array([
+            np.clip(position[0], self.limits["x"]),
+            np.clip(position[1], self.limits["y"]),
+            np.clip(position[2], self.limits["z"]),
+        ])
 
     def solve(self, target_pos, q_init=None):
-        """
-        Iterative Jacobian pseudoinverse IK solver.
-
-        target_pos: np.array (3,) — desired end effector position in world frame (meters)
-        q_init:     np.array (6,) — initial joint angles to warm start from (optional)
-
-        Returns:    np.array (6,) — joint angles that reach target_pos within tolerance,
-                    or best effort if max_iter reached without convergence
-        """
-        # warm start from provided config or current sim state
+        target_pos = self._clamp(np.asarray(target_pos, dtype=float))
+ 
         if q_init is not None:
             self.data.qpos[:6] = q_init.copy()
-        
+ 
         for i in range(self.max_iter):
-            # forward kinematics — updates site positions
             mujoco.mj_forward(self.model, self.data)
-
-            # current end effector position
             current_pos = self.data.site_xpos[self.site_id].copy()
-
-            # error vector
             error = target_pos - current_pos
             error_norm = np.linalg.norm(error)
-
+ 
             if error_norm < self.tol:
-                return self.data.qpos[:6].copy()
-
-            # compute jacobian — mj_jacSite fills a (3, nv) matrix
-            jacp = np.zeros((3, self.model.nv))
-            mujoco.mj_jacSite(self.model, self.data, jacp, None, self.site_id)
-            J = jacp[:, :6]  # first 6 cols = arm joints only, ignore gripper
-
-            # check for singularity
-            manipulability = np.linalg.det(J @ J.T)
-            # if manipulability < 1e-4:
-            #     print(f"Warning: near singularity at iter {i} "
-            #           f"(manipulability={manipulability:.2e}) — holding position")
-            #     break
-
-            # damped least squares pseudoinverse
-            # J_pinv = J^T * (J * J^T + lambda^2 * I)^-1
-            J_pinv = J.T @ np.linalg.inv(J @ J.T + self.damping ** 2 * np.eye(3))
-
-            # joint update
-            dq = self.step_size * J_pinv @ error
+                break
+ 
+            J = self._get_jacobian()
+            lam = self._compute_damping(J)
+            J_dls = J.T @ np.linalg.inv(J @ J.T + lam**2 * np.eye(3))
+            dq = self.step_size * J_dls @ error
             self.data.qpos[:6] += dq
-
-            # clamp to joint limits
-            for j in range(6):
-                lo = self.model.jnt_range[j, 0]
-                hi = self.model.jnt_range[j, 1]
-                self.data.qpos[j] = np.clip(self.data.qpos[j], lo, hi)
-
+            self._apply_joint_limits()
+ 
         return self.data.qpos[:6].copy()
+    
+    def solve_incremental(self, delta_pos, max_delta_norm = 0.05):
+        """
+        Apply an incremental cartesian delta to the current EE position.
+ 
+        This is the method used by the PD control loop
+        """
+        # Safety cap
+        norm = np.linalg.norm(delta_pos)
+        if norm > max_delta_norm:
+            delta_pos = delta_pos / norm * max_delta_norm
+ 
+        current_ee = self.get_end_effector_pos()
+        target_pos = current_ee + delta_pos
+        return self.solve(target_pos, q_init=self.data.qpos[:6].copy())
+    
 
     def get_end_effector_pos(self):
         """Returns current end effector position in world frame."""
@@ -83,3 +86,36 @@ class IKSolver:
     def get_error(self, target_pos):
         """Returns distance between current EE position and target in meters."""
         return float(np.linalg.norm(target_pos - self.get_end_effector_pos()))
+    
+
+    def _get_jacobian(self):
+        jacp = np.zeros((3, self.model.nv))
+        mujoco.mj_jacSite(self.model, self.data, jacp, None, self.site_id)
+        return jacp[:, :6] # first 6 columns only
+    
+
+    def _compute_damping(self, J):
+        if not self.adaptive_damping:
+            return self.damping
+        
+        # Scale lam with inverse of manipulability measure
+        manip = float(np.linalg.det(J @ J.T))
+        if manip < 1e-4:
+            # Very near singularity...use large damping
+            return self.damping * 10.0
+        
+        elif manip < 1e-2:
+            scale = 1.0 + (1e-2 - manip) / (1e-2 - 1e-4) * 9.0   # 1× → 10×
+            return self.damping * scale
+        
+        return self.damping
+    
+
+    def _apply_joint_limits(self):
+        m = self.joint_limit_margin
+
+        for j in range(6):
+            lo = self.model.jnt_range[j, 0] + m
+            hi = self.model.jnt_range[j, 1] - m
+            
+            self.data.qpos[j] = np.clip(self.data.qpos[j], lo, hi)
