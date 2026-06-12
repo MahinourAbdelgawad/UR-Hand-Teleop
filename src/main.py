@@ -107,8 +107,8 @@ def control_thread(tracker, sim, solver, pd, stop_event):
 
                 gripper_closed = is_closed
                 
-                if gesture:
-                    print(f"Detected gesture: {gesture}, armed: {armed}")
+                # if gesture:
+                #     print(f"Detected gesture: {gesture}, armed: {armed}")
 
                 if gesture == "thumb_up" and not armed:
                     armed = True
