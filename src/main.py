@@ -60,6 +60,8 @@ def camera_thread(tracker, estimator, cap, stop_event):
         t0 = time.monotonic()
 
         ret, raw = cap.read()
+        # h, w = raw.shape[:2]
+        # print(w, h)
         if not ret:
             continue
 

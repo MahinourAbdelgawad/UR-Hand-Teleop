@@ -3,7 +3,7 @@ from dt_apriltags import Detector
 import cv2 as cv
 
 class DepthEstimator:
-    def __init__(self, fx = 800.0, fy = 800.0, cx = 960.0, cy = 540.0, tag_size = 0.05, alpha = 0.3, max_missing = 10):
+    def __init__(self, fx = 600.0, fy = 600.0, cx = 320.0, cy = 240.0, tag_size = 0.05, alpha = 0.3, max_missing = 10):
         """
         Depth estimator using an AprilTag for webcam/camera without depth
         alpha: EMA weight
@@ -37,6 +37,8 @@ class DepthEstimator:
                 [self.tag_size / 2, -self.tag_size / 2, 0],
                 [-self.tag_size / 2, -self.tag_size / 2, 0]
             ], dtype=np.float32)
+        
+        self._last_detections = [] # cache detection for drawing
 
 
     def estimate(self, frame):
@@ -71,6 +73,7 @@ class DepthEstimator:
         try:
             gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY) # preprocessing
             detections = self.detector.detect(gray)
+            self._last_detections = detections
 
             if not detections:
                 return None
@@ -90,10 +93,7 @@ class DepthEstimator:
 
 
     def draw_detections(self, frame):
-        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        detections = self.detector.detect(gray)
-
-        for det in detections:
+        for det in self._last_detections:
             corners = det.corners.astype(int)
 
             # draw the four sides
