@@ -117,7 +117,7 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                     ref_palm_x = px
                     ref_palm_y = py
                     ref_depth = dep
-                    print("ARM ACTIVATED")
+                    # print("ARM ACTIVATED")
                     
                     with MUJOCO_LOCK:
                         ref_ee_pos = solver.get_end_effector_pos().copy()
@@ -125,7 +125,7 @@ def control_thread(tracker, sim, solver, pd, stop_event):
 
                 elif gesture == "thumb_down" and armed:
                     armed = False
-                    print("ARM DEACTIVATED")
+                    # print("ARM DEACTIVATED")
 
                 if armed:
                     dx_img = px - ref_palm_x

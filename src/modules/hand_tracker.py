@@ -150,8 +150,8 @@ class HandTracker:
             if self._thumb_pointing_up(landmarks):
                 return "thumb_up"
             
-            if self._thumb_pointing_down(landmarks):
-                return "thumb_down"
+            # if self._thumb_pointing_down(landmarks):
+            #     return "thumb_down"
  
         if fingers_closed and not thumb_ext:
             return "closed"
