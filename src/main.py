@@ -131,16 +131,21 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                     movement = np.sqrt(dx_img**2 + dy_img**2)
 
                     if movement > JITTER_THRESHOLD:
-                        dx_world = dx_img  *  HAND_EE_SCALE_XY
-                        dy_world = -dy_img *  HAND_EE_SCALE_XY
+                        # dx_world = dx_img  *  HAND_EE_SCALE_XY
+                        # dy_world = -dy_img *  HAND_EE_SCALE_XY
+                        robot_dy = -dx_img * HAND_EE_SCALE_XY
+                        robot_dz = -dy_img * HAND_EE_SCALE_XY
 
                         if dep is not None and ref_depth is not None:
-                            dz_world = (ref_depth - dep) * HAND_EE_SCALE_Z
+                            # dz_world = (ref_depth - dep) * HAND_EE_SCALE_Z
+                            robot_dx = (ref_depth - dep) * HAND_EE_SCALE_Z
 
                         else:
-                            dz_world = 0.0
+                            # dz_world = 0.0
+                            robot_dx = 0.0
 
-                        desired = ref_ee_pos + np.array([dx_world, dy_world, dz_world])
+                        # desired = ref_ee_pos + np.array([dx_world, dy_world, dz_world])
+                        desired = ref_ee_pos + np.array([robot_dx, robot_dy, robot_dz])
                         desired = clamp(desired)
                         pd.settarget(desired)
 
