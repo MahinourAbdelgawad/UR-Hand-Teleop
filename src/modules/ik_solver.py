@@ -5,12 +5,12 @@ import numpy as np
 
 class IKSolver:
     def __init__(self, model, data, limits, site_name="attachment_site",
-        max_iter=50, tol=1e-3, step_size=0.5, damping=0.01, adaptive_damping=True):
+        max_iter=50, tol=1e-3, step_size=0.3, damping=0.05, adaptive_damping=True):
 
         self.model = model
         self.data = data
         self.site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
-        self.max_iter = max_iter
+        self.max_iter = 1 #max_iter
         self.tol = tol
         self.step_size = step_size
         self.damping = damping

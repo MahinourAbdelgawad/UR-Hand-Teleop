@@ -6,7 +6,7 @@ class PDController:
     PD Controller for EE position (PID without the I)
     Maintains a desired EE position, updated by hand tracking changes
     """
-    def __init__(self, kp = 5.0, kd = 0.01, max_step = 0.05, dt = None):
+    def __init__(self, kp = 5.0, kd = 0.1, max_step = 0.05, dt = None):
         self.kp = kp
         self.kd = kd 
         self.max_step = max_step
@@ -47,7 +47,7 @@ class PDController:
             error = self.target - np.asarray(current_pos, dtype=float)
             error_dt = (error - self._last_error) / dt 
             
-            command = (self.kp * error) #+ (self.kd * error_dt)# 
+            command = (self.kp * error) + (self.kd * error_dt)
 
             # cap for safety
             norm = np.linalg.norm(command)

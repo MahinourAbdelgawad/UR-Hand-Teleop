@@ -19,7 +19,7 @@ class HandTracker:
         Thumbs up to arm, thumbs down to disarm
         Thumb tip = 4, thumb IP = 3, thumb MCP = 2, thumb CMC = 1
     """
-    def __init__(self, model_path = "mp_models/hand_landmarker.task"):
+    def __init__(self, model_path = "mp_models/hand_landmarker.task", alpha = 0.2):
         try:
             self.finger_tips = [8,12,16,20] # index - middle - ring - pinky
             self.finger_pips = [6, 10, 14, 18]
@@ -50,6 +50,9 @@ class HandTracker:
 
             self._reference_pos = None 
 
+            self.alpha = alpha 
+            self._smoothed_palm = None # fr EMA
+
         except Exception as e:
             print(f"Error initializating Hand Tracker: {e}")
     
@@ -67,10 +70,22 @@ class HandTracker:
     
     def _get_palm_center(self, landmarks):
         try:
-            # average of the four MCPs
-            x = sum(landmarks[i].x for i in self.MCPs) / len(self.MCPs)
-            y = sum(landmarks[i].y for i in self.MCPs) / len(self.MCPs)
-            return x, y
+            # # average of the four MCPs
+            # x = sum(landmarks[i].x for i in self.MCPs) / len(self.MCPs)
+            # y = sum(landmarks[i].y for i in self.MCPs) / len(self.MCPs)
+            # return x, y
+            raw_x = sum(landmarks[i].x for i in self.MCPs) / len(self.MCPs)
+            raw_y = sum(landmarks[i].y for i in self.MCPs) / len(self.MCPs)
+
+            if self._smoothed_palm is None:
+                self._smoothed_palm = np.array([raw_x, raw_y])
+            else:
+                self._smoothed_palm = (
+                    self.alpha * np.array([raw_x, raw_y])
+                    + (1 - self.alpha) * self._smoothed_palm
+                )
+
+            return float(self._smoothed_palm[0]), float(self._smoothed_palm[1])
         
         except Exception as e:
             print(f"Error finding palm center: {e}")
@@ -104,6 +119,7 @@ class HandTracker:
         """
         try:
             if not self._latest_result or not self._latest_result.hand_landmarks:
+                self._smoothed_palm = None # reset
                 return None
 
             landmarks = self._latest_result.hand_landmarks[0]

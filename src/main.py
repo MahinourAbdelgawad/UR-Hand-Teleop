@@ -67,6 +67,7 @@ def camera_thread(tracker, estimator, cap, stop_event):
             annotated = tracker.process_frame(raw)
             hand_state = tracker.get_hand_state()
             depth = estimator.estimate(raw)
+            annotated = estimator.draw_detections(annotated)
             
             with STATE_LOCK:
                 HAND_STATE = hand_state
@@ -91,6 +92,7 @@ def control_thread(tracker, sim, solver, pd, stop_event):
     ref_depth = None
     ref_ee_pos = None
     gripper_closed = False
+    last_desired = None 
 
     while not stop_event.is_set() and sim.is_running():
         t0 = time.monotonic()
@@ -128,26 +130,32 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                 if armed:
                     dx_img = px - ref_palm_x
                     dy_img = py - ref_palm_y
-                    movement = np.sqrt(dx_img**2 + dy_img**2)
+                    # movement = np.sqrt(dx_img**2 + dy_img**2)
 
-                    if movement > JITTER_THRESHOLD:
-                        # dx_world = dx_img  *  HAND_EE_SCALE_XY
-                        # dy_world = -dy_img *  HAND_EE_SCALE_XY
-                        robot_dy = -dx_img * HAND_EE_SCALE_XY
-                        robot_dz = -dy_img * HAND_EE_SCALE_XY
+                    # if movement > JITTER_THRESHOLD:
+                    #     # dx_world = dx_img  *  HAND_EE_SCALE_XY
+                    #     # dy_world = -dy_img *  HAND_EE_SCALE_XY
+                    robot_dy = -dx_img * HAND_EE_SCALE_XY
+                    robot_dz = -dy_img * HAND_EE_SCALE_XY
 
-                        if dep is not None and ref_depth is not None:
-                            # dz_world = (ref_depth - dep) * HAND_EE_SCALE_Z
-                            robot_dx = (ref_depth - dep) * HAND_EE_SCALE_Z
+                    if dep is not None and ref_depth is not None:
+                        # dz_world = (ref_depth - dep) * HAND_EE_SCALE_Z
+                        robot_dx = (ref_depth - dep) * HAND_EE_SCALE_Z
 
-                        else:
-                            # dz_world = 0.0
-                            robot_dx = 0.0
+                    else:
+                        # dz_world = 0.0
+                        robot_dx = 0.0
 
-                        # desired = ref_ee_pos + np.array([dx_world, dy_world, dz_world])
-                        desired = ref_ee_pos + np.array([robot_dx, robot_dy, robot_dz])
-                        desired = clamp(desired)
-                        pd.settarget(desired)
+                    # # desired = ref_ee_pos + np.array([dx_world, dy_world, dz_world])
+                    # desired = ref_ee_pos + np.array([robot_dx, robot_dy, robot_dz])
+                    # desired = clamp(desired)
+                    # pd.settarget(desired)
+                    new_desired = ref_ee_pos + np.array([robot_dx, robot_dy, robot_dz])
+                    new_desired = clamp(new_desired)
+
+                    if last_desired is None or np.linalg.norm(new_desired - last_desired) > 0.002:
+                        pd.settarget(new_desired)
+                        last_desired = new_desired.copy()
 
                     with MUJOCO_LOCK:
                         current_ee = solver.get_end_effector_pos()

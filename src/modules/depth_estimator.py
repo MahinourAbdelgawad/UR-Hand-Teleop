@@ -87,3 +87,29 @@ class DepthEstimator:
         except Exception as e:
             print(f"Error estimating depth: {e}")
             return None
+
+
+    def draw_detections(self, frame):
+        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        detections = self.detector.detect(gray)
+
+        for det in detections:
+            corners = det.corners.astype(int)
+
+            # draw the four sides
+            for i in range(4):
+                pt1 = tuple(corners[i])
+                pt2 = tuple(corners[(i + 1) % 4])
+                cv.line(frame, pt1, pt2, (0, 255, 0), 2)
+
+            # draw corner dots
+            for corner in corners:
+                cv.circle(frame, tuple(corner), 4, (0, 200, 255), -1)
+
+            # label with tag id and filtered depth
+            center = corners.mean(axis=0).astype(int)
+            z_str  = f"Z={self._filtered_z:.3f}m" if self._filtered_z is not None else "Z=?"
+            cv.putText(frame, f"id={det.tag_id} {z_str}", tuple(center),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        return frame
