@@ -18,7 +18,9 @@ def main():
         state = tracker.get_hand_state()
 
         if state is not None:
-            palm_x, palm_y, is_closed = state
+            palm_x = state["palm_x"]
+            palm_y = state["palm_y"]
+            is_closed = state["is_closed"]
             status = "CLOSED" if is_closed else "OPEN"
             color  = (0, 0, 255) if is_closed else (0, 255, 0)
 

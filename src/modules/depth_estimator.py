@@ -3,9 +3,11 @@ from dt_apriltags import Detector
 import cv2 as cv
 
 class DepthEstimator:
-    def __init__(self, fx = 800.0, fy = 800.0, cx = 960.0, cy = 540.0, tag_size = 0.05):
+    def __init__(self, fx = 600.0, fy = 600.0, cx = 320.0, cy = 240.0, tag_size = 0.05, alpha = 0.3, max_missing = 10):
         """
         Depth estimator using an AprilTag for webcam/camera without depth
+        alpha: EMA weight
+        max_missing: max frames to hold last value if no tag detected
         """
 
         #TODO: CALIBRATE CAMERA AND FIX THESE INTRINSICS
@@ -22,24 +24,64 @@ class DepthEstimator:
 
         self.detector = Detector(families = "tag36h11")
 
+        self.alpha = alpha
+
+        self.max_missing = max_missing
+
+        self._filtered_z = None # running EMA
+        self._missing = 0 # consecutive frames without tag detected
+
+        self._object_points = np.array([
+                [-self.tag_size / 2, self.tag_size / 2, 0],
+                [self.tag_size / 2, self.tag_size / 2, 0],
+                [self.tag_size / 2, -self.tag_size / 2, 0],
+                [-self.tag_size / 2, -self.tag_size / 2, 0]
+            ], dtype=np.float32)
+        
+        self._last_detections = [] # cache detection for drawing
+
+
     def estimate(self, frame):
+        try:
+            raw_z = self._detect_raw(frame)
+ 
+            if raw_z is not None:
+                self._missing = 0
+                if self._filtered_z is None:
+                    self._filtered_z = raw_z #cold start
+
+                else:
+                    # EMA: new = alpha*raw + (1-alpha)*old
+                    self._filtered_z = self.alpha * raw_z + (1.0 - self.alpha) * self._filtered_z
+            else:
+                self._missing += 1
+                if self._missing > self.max_missing:
+                    self._filtered_z = None
+    
+            return self._filtered_z
+        
+        except Exception as e:
+            print(f"Error estimating depth: {e}")
+
+
+    def reset(self):
+        self._filtered_z = None 
+        self._missing = 0
+        
+
+    def _detect_raw(self, frame):
         try:
             gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY) # preprocessing
             detections = self.detector.detect(gray)
+            self._last_detections = detections
 
             if not detections:
                 return None
             
             corners = detections[0].corners.astype(np.float32)
 
-            object_points = np.array([
-                [-self.tag_size / 2, self.tag_size / 2, 0],
-                [self.tag_size / 2, self.tag_size / 2, 0],
-                [self.tag_size / 2, -self.tag_size / 2, 0],
-                [-self.tag_size / 2, -self.tag_size / 2, 0]
-            ], dtype=np.float32)
 
-            ok, rvec, tvec = cv.solvePnP(object_points, corners, self.camera_matrix, self.dist_coeffs)
+            ok, rvec, tvec = cv.solvePnP(self._object_points, corners, self.camera_matrix, self.dist_coeffs)
 
             if ok:
                 return float(tvec[2][0]) # return z in meters
@@ -48,3 +90,26 @@ class DepthEstimator:
         except Exception as e:
             print(f"Error estimating depth: {e}")
             return None
+
+
+    def draw_detections(self, frame):
+        for det in self._last_detections:
+            corners = det.corners.astype(int)
+
+            # draw the four sides
+            for i in range(4):
+                pt1 = tuple(corners[i])
+                pt2 = tuple(corners[(i + 1) % 4])
+                cv.line(frame, pt1, pt2, (0, 255, 0), 2)
+
+            # draw corner dots
+            for corner in corners:
+                cv.circle(frame, tuple(corner), 4, (0, 200, 255), -1)
+
+            # label with tag id and filtered depth
+            center = corners.mean(axis=0).astype(int)
+            z_str  = f"Z={self._filtered_z:.3f}m" if self._filtered_z is not None else "Z=?"
+            cv.putText(frame, f"id={det.tag_id} {z_str}", tuple(center),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        return frame

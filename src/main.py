@@ -1,74 +1,264 @@
 import cv2 as cv
 import numpy as np
+import threading
+import time
 from src.modules.hand_tracker import HandTracker
 from src.modules.mujoco_wrapper import MujocoWrapper
 from src.modules.ik_solver import IKSolver
 from src.modules.depth_estimator import DepthEstimator
+from src.modules.pd_controller import PDController
 
-X_MIN, X_MAX = -0.4, 0.4
-Y_MIN, Y_MAX = -0.4, 0.4
-Z_MIN, Z_MAX =  0.2, 0.7
+FPS = 30
+CONTROL_RATE = 50
+CONTROL_PERIOD = 1.0 / CONTROL_RATE
 
-def assemble_target(palm_x, palm_y, depth):
-    # palm_x and palm_y are normalized 0-1 
-    # depth is in meters from AprilTag, None if tag not visible
-    x = X_MIN + palm_x * (X_MAX - X_MIN)
-    y = Y_MIN + palm_y * (Y_MAX - Y_MIN)
-    z = float(np.clip(depth, Z_MIN, Z_MAX)) if depth is not None else 0.4
+JITTER_THRESHOLD = 0.008
+HAND_EE_SCALE_XY = 0.6
+HAND_EE_SCALE_Z  = 0.4
 
-    return np.array([x, y, z])
+LIMITS = {
+    "x": (-0.7, 0.7),
+    "y": (-0.7, 0.7),
+    "z": (0.05, 0.9),
+}
 
-def main():
-    tracker = HandTracker()
-    sim = MujocoWrapper()
-    estimator = DepthEstimator()
-    IK = IKSolver(sim.model, sim.data)
+HAND_STATE = None
+DEPTH = None
+FRAME = None
 
-    sim.launch()
+# Thread safety
+STATE_LOCK = threading.Lock()
+MUJOCO_LOCK = threading.Lock()  # Protects all MuJoCo operations
 
-    cap = cv.VideoCapture(0)
 
-    while cap.isOpened() and sim.is_running():
-        ret, frame = cap.read()
+def clamp(position):
+    return np.array([
+        np.clip(position[0], LIMITS["x"][0], LIMITS["x"][1]),
+        np.clip(position[1], LIMITS["y"][0], LIMITS["y"][1]),
+        np.clip(position[2], LIMITS["z"][0], LIMITS["z"][1]),
+    ])
+
+
+def draw(frame, armed, gesture, is_closed, ee_pos):
+    arm_text  = "ARMED"  if armed else "DISARMED"
+    arm_color = (0, 220, 0) if armed  else (0, 80, 220)
+    closed_text  = "CLOSED" if is_closed else "OPEN"
+    closed_color = (0, 0, 220) if is_closed else (0, 200, 80)
+
+    cv.putText(frame, f"{arm_text}", (20, 40), cv.FONT_HERSHEY_SIMPLEX, 0.8, arm_color, 2)
+    cv.putText(frame, f"{closed_text}", (20, 75), cv.FONT_HERSHEY_SIMPLEX, 0.7, closed_color, 2)
+
+    if gesture:
+        cv.putText(frame, f"{gesture}", (20, 110), cv.FONT_HERSHEY_SIMPLEX, 0.65, (0, 200, 255), 2)
+
+
+def camera_thread(tracker, estimator, cap, stop_event):
+    global HAND_STATE, DEPTH, FRAME  
+    period = 1.0 / FPS
+
+    while not stop_event.is_set():
+        t0 = time.monotonic()
+
+        ret, raw = cap.read()
+        # h, w = raw.shape[:2]
+        # print(w, h)
         if not ret:
-            break
+            continue
 
-        # frame = cv.flip(frame, 1)
-        frame = tracker.process_frame(frame)
+        try:
+            annotated = tracker.process_frame(raw)
+            hand_state = tracker.get_hand_state()
+            depth = estimator.estimate(raw)
+            annotated = estimator.draw_detections(annotated)
+            
+            with STATE_LOCK:
+                HAND_STATE = hand_state
+                DEPTH = depth
+                FRAME = annotated
+        except Exception as e:
+            print(f"Error in camera thread: {e}")
+            continue
 
-        state = tracker.get_hand_state()
+        elapsed = time.monotonic() - t0
+        sleep = period - elapsed
+        if sleep > 0:
+            time.sleep(sleep)
+
+
+def control_thread(tracker, sim, solver, pd, stop_event):
+    global HAND_STATE, DEPTH, MUJOCO_LOCK
+
+    armed = False
+    ref_palm_x = 0.0
+    ref_palm_y = 0.0
+    ref_depth = None
+    ref_ee_pos = None
+    gripper_closed = False
+    last_desired = None 
+
+    while not stop_event.is_set() and sim.is_running():
+        t0 = time.monotonic()
+
+        with STATE_LOCK:
+            state = HAND_STATE
+            dep = DEPTH
 
         if state is not None:
-            palm_x, palm_y, is_closed = state
-            depth = estimator.estimate(frame)
+            try:
+                gesture = state["gesture"]
+                is_closed = state["is_closed"]
+                px, py = state["palm_x"], state["palm_y"]
 
-            target = assemble_target(palm_x, palm_y, depth)  # your coord mapping function
-            q = IK.solve(target)
+                gripper_closed = is_closed
+                
+                # if gesture:
+                #     print(f"Detected gesture: {gesture}, armed: {armed}")
 
-            for i in range(6):
-                sim.set_joint(i, q[i])
+                if gesture == "thumb_up" and not armed:
+                    armed = True
+                    ref_palm_x = px
+                    ref_palm_y = py
+                    ref_depth = dep
+                    # print("ARM ACTIVATED")
+                    
+                    with MUJOCO_LOCK:
+                        ref_ee_pos = solver.get_end_effector_pos().copy()
+                        pd.reset(ref_ee_pos)
 
-            sim.set_gripper(is_closed)
+                elif gesture == "thumb_down" and armed:
+                    armed = False
+                    # print("ARM DEACTIVATED")
 
-            status = "CLOSED" if is_closed else "OPEN"
+                if armed:
+                    dx_img = px - ref_palm_x
+                    dy_img = py - ref_palm_y
+                    # movement = np.sqrt(dx_img**2 + dy_img**2)
 
-            color  = (0, 0, 255) if is_closed else (0, 255, 0)
-            cv.putText(frame, f"Gripper: {status}", (20, 40),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        else:
-            cv.putText(frame, "No hand detected", (20, 40),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    # if movement > JITTER_THRESHOLD:
+                    #     # dx_world = dx_img  *  HAND_EE_SCALE_XY
+                    #     # dy_world = -dy_img *  HAND_EE_SCALE_XY
+                    robot_dy = -dx_img * HAND_EE_SCALE_XY
+                    robot_dz = -dy_img * HAND_EE_SCALE_XY
 
-        sim.step()
+                    if dep is not None and ref_depth is not None:
+                        # dz_world = (ref_depth - dep) * HAND_EE_SCALE_Z
+                        robot_dx = (ref_depth - dep) * HAND_EE_SCALE_Z
 
-        cv.imshow("URHandTeleop", frame)
-        if cv.waitKey(1) & 0xFF == ord('q'):
-            break
+                    else:
+                        # dz_world = 0.0
+                        robot_dx = 0.0
 
-    sim.close()
-    cap.release()
-    tracker.close()
-    cv.destroyAllWindows()
+                    # # desired = ref_ee_pos + np.array([dx_world, dy_world, dz_world])
+                    # desired = ref_ee_pos + np.array([robot_dx, robot_dy, robot_dz])
+                    # desired = clamp(desired)
+                    # pd.settarget(desired)
+                    new_desired = ref_ee_pos + np.array([robot_dx, robot_dy, robot_dz])
+                    new_desired = clamp(new_desired)
+
+                    if last_desired is None or np.linalg.norm(new_desired - last_desired) > 0.002:
+                        pd.settarget(new_desired)
+                        last_desired = new_desired.copy()
+
+                    with MUJOCO_LOCK:
+                        current_ee = solver.get_end_effector_pos()
+                        delta = pd.compute(current_ee)
+                        new_q = solver.solve_incremental(delta)
+                        sim.set_joints(new_q)
+            except Exception as e:
+                print(f"Error in control thread: {e}")
+                armed = False
+
+        with MUJOCO_LOCK:
+            sim.set_gripper(gripper_closed)
+            if not sim.step():
+                print("Simulation step failed, exiting control loop")
+                break
+
+        elapsed = time.monotonic() - t0
+        sleep = CONTROL_PERIOD - elapsed
+        if sleep > 0:
+            time.sleep(sleep)
+
+
+def main():
+    try:
+        tracker = HandTracker()
+        sim = MujocoWrapper()
+        
+        if sim.model is None or sim.data is None:
+            print("Error: Failed to initialize MuJoCo. Exiting.")
+            return
+        
+        estimator = DepthEstimator()
+        IK = IKSolver(sim.model, sim.data, LIMITS)
+        pd = PDController()
+
+        if not sim.launch():
+            print("Error: Failed to launch MuJoCo viewer. Exiting.")
+            return
+
+        cap = cv.VideoCapture(0)
+        if not cap.isOpened():
+            print("Error: cannot open camera.")
+            sim.close()
+            return
+
+        stop_event = threading.Event()
+
+        camera = threading.Thread(
+            target=camera_thread,
+            args=(tracker, estimator, cap, stop_event),
+            daemon=True, name="camera_thread",
+        )
+        control = threading.Thread(
+            target=control_thread,
+            args=(tracker, sim, IK, pd, stop_event),
+            daemon=True, name="control_thread",
+        )
+        camera.start()
+        control.start()
+
+        try:
+            while sim.is_running():
+                with STATE_LOCK:
+                    fr = FRAME
+                    state = HAND_STATE
+                
+                if fr is None:
+                    if cv.waitKey(1) & 0xFF == ord('q'):
+                        break
+                    continue             
+
+                gesture = state["gesture"]   if state else None
+                closed = state["is_closed"] if state else False
+                armed  = pd.target is not None
+
+                ee_pos = None
+                try:
+                    with MUJOCO_LOCK:
+                        ee_pos = IK.get_end_effector_pos()
+                except Exception:
+                    pass
+
+                draw(fr, armed, gesture, closed, ee_pos) 
+
+                cv.imshow("URHandTeleop", fr) 
+                if cv.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+        finally:
+            stop_event.set()
+            camera.join(timeout=2)
+            control.join(timeout=2)
+            sim.close()
+            cap.release()
+            tracker.close()
+    
+    except Exception as e:
+        print(f"Fatal error in main: {e}")
+        import traceback
+        traceback.print_exc()
+        cv.destroyAllWindows()
 
 
 if __name__ == "__main__":
