@@ -3,16 +3,18 @@ import mujoco.viewer
 import numpy as np
 
 class MujocoWrapper:
-    def __init__(self, model = "arm_models/ur5e_model/ur5e.xml", gripper = "arm_models/robotiq_2f85/2f85.xml"):
+    def __init__(self, model = "arm_models/ur5e_model/ur5e.xml", gripper = "arm_models/robotiq_2f85/2f85.xml", scene = None):
         self.model = None
         self.data = None
         self.viewer = None
+        self.arm_qpos_idx = None
         
         try:
             # self.model = mujoco.MjModel.from_xml_path(model)
             self.model = self._build_combined_model(
                 model,
-                gripper
+                gripper,
+                scene
             )
             if self.model is None:
                 raise RuntimeError("Failed to build combined model")
@@ -27,12 +29,15 @@ class MujocoWrapper:
             # self.data.ctrl[6] = 0 # gripper actuator open
 
             mujoco.mj_forward(self.model, self.data)
+            self.arm_qpos_idx = self.get_arm_joint_indices(self.model)
 
             # print('DOFs:', self.model.nv, '  Actuators:', self.model.nu)
 
 
         except Exception as e:
             print(f"Error initializing MuJoCo: {e}")
+            import traceback
+            traceback.print_exc()
             self.model = None
             self.data = None
             raise
@@ -74,11 +79,12 @@ class MujocoWrapper:
             return
         
         try:
-            if len(angles) > len(self.data.ctrl):
-                print(f"Warning: trying to set {len(angles)} joints but only {len(self.data.ctrl)} available")
-                angles = angles[:len(self.data.ctrl)]
+            if len(angles) > 6:
+                print(f"Warning: trying to set {len(angles)} joints but only 6 arm joints available")
+                angles = angles[:6]
             
-            self.data.ctrl[:len(angles)] = angles
+            for i, idx in enumerate(self.arm_qpos_idx):
+                self.data.ctrl[i] = float(angles[i])
 
         except Exception as e:
             print(f"Error setting joints: {e}")
@@ -89,6 +95,8 @@ class MujocoWrapper:
         Set gripper command. Expects gripper actuator at index 6.
         """
         if self.data is None or len(self.data.ctrl) <= 6:
+            if self.data is not None:
+                print(f"Warning: Gripper index 6 not available. Available: {len(self.data.ctrl)} controls")
             return
         
         try:
@@ -145,7 +153,7 @@ class MujocoWrapper:
             
         return None
 
-    def _build_combined_model(self, ur5e_path, gripper_path):
+    def _build_combined_model(self, ur5e_path, gripper_path, scene = None):
         arm = mujoco.MjSpec.from_file(ur5e_path)
         gripper = mujoco.MjSpec.from_file(gripper_path)
 
@@ -158,10 +166,43 @@ class MujocoWrapper:
         
         arm.attach(gripper, frame=frame, prefix='gripper_')
 
-        return arm.compile()
+        if scene is not None:
+            # Attach arm into the scene
+            mount = scene.worldbody.add_frame()
+            mount.name = "arm_mount"
+            mount.pos = (0.0, 0.0, 0.04) # lift base a bit
+
+            scene.attach(arm, frame=mount, prefix="arm_")
+            
+            return scene.compile()
+        else:
+            return arm.compile()
 
         
     def get_qpos(self):
-        return self.data.qpos[:6].copy()
+        return self.data.qpos[self.arm_qpos_idx].copy()
+    
+    def get_arm_joint_indices(self, prefix="arm_"):
+        arm_joint_names = [
+            "arm_shoulder_pan_joint",
+            "arm_shoulder_lift_joint", 
+            "arm_elbow_joint",
+            "arm_wrist_1_joint",
+            "arm_wrist_2_joint",
+            "arm_wrist_3_joint",
+        ]
+        
+        qpos_indices = []
+        for name in arm_joint_names:
+            full_name = f"{prefix}{name}"
+            jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, full_name)
+            if jnt_id == -1:
+                jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            if jnt_id == -1:
+                raise ValueError(f"Could not find joint '{name}' in model")
+            
+            qpos_indices.append(self.model.jnt_qposadr[jnt_id])
+        
+        return np.array(qpos_indices) 
 
         

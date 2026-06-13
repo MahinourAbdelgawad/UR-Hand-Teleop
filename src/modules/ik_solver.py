@@ -4,7 +4,7 @@ import numpy as np
 #TODO: go over this and verify the vibe coded logic
 
 class IKSolver:
-    def __init__(self, model, data, limits, site_name="attachment_site",
+    def __init__(self, model, data, limits, site_name="arm_attachment_site", arm_qpos_idx = None,
         max_iter=50, tol=1e-3, step_size=0.3, damping=0.05, adaptive_damping=True):
 
         self.model = model
@@ -15,6 +15,7 @@ class IKSolver:
         self.step_size = step_size
         self.damping = damping
         self.adaptive_damping = adaptive_damping
+        self.arm_qpos_idx = arm_qpos_idx if arm_qpos_idx is not None else np.arange(6)
 
         if self.site_id == -1:
             raise ValueError(f"Site '{site_name}' not found in model. "
@@ -44,7 +45,7 @@ class IKSolver:
         if q_init is not None:
             if len(q_init) != 6:
                 raise ValueError(f"q_init must be 6-dimensional, got {len(q_init)}")
-            self.data.qpos[:6] = q_init.copy()
+            self.data.qpos[self.arm_qpos_idx] = q_init.copy()
  
         for i in range(self.max_iter):
             mujoco.mj_forward(self.model, self.data)
@@ -59,10 +60,10 @@ class IKSolver:
             lam = self._compute_damping(J)
             J_dls = J.T @ np.linalg.inv(J @ J.T + lam**2 * np.eye(3))
             dq = self.step_size * J_dls @ error
-            self.data.qpos[:6] += dq
+            self.data.qpos[self.arm_qpos_idx] += dq
             self._apply_joint_limits()
  
-        return self.data.qpos[:6].copy()
+        return self.data.qpos[self.arm_qpos_idx].copy()
     
     def solve_incremental(self, delta_pos, max_delta_norm = 0.05):
         """
@@ -80,7 +81,7 @@ class IKSolver:
  
         current_ee = self.get_end_effector_pos()
         target_pos = current_ee + delta_pos
-        return self.solve(target_pos, q_init=self.data.qpos[:6].copy())
+        return self.solve(target_pos, q_init=self.data.qpos[self.arm_qpos_idx].copy())
     
 
     def get_end_effector_pos(self):
@@ -101,7 +102,7 @@ class IKSolver:
     def _get_jacobian(self):
         jacp = np.zeros((3, self.model.nv))
         mujoco.mj_jacSite(self.model, self.data, jacp, None, self.site_id)
-        return jacp[:, :6] # first 6 columns only
+        return jacp[:, self.arm_qpos_idx] 
     
 
     def _compute_damping(self, J):

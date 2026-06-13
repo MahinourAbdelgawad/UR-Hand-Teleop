@@ -2,11 +2,13 @@ import cv2 as cv
 import numpy as np
 import threading
 import time
+import mujoco
 from src.modules.hand_tracker import HandTracker
 from src.modules.mujoco_wrapper import MujocoWrapper
 from src.modules.ik_solver import IKSolver
 from src.modules.depth_estimator import DepthEstimator
 from src.modules.pd_controller import PDController
+from src.modules.scene import Scene
 
 FPS = 30
 CONTROL_RATE = 50
@@ -183,14 +185,33 @@ def control_thread(tracker, sim, solver, pd, stop_event):
 def main():
     try:
         tracker = HandTracker()
-        sim = MujocoWrapper()
+        scene = Scene().build_scene()
+        sim = MujocoWrapper(scene=scene)
+
+        model = sim.model
+        print(f"\nnv={model.nv}  nu={model.nu}  njnt={model.njnt}")
+        print("\nJoints:")
+        for i in range(model.njnt):
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+            print(f"  jnt[{i}]  qposadr={model.jnt_qposadr[i]}  name={name}")
+        print("\nActuators:")
+        for i in range(model.nu):
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
+            print(f"  ctrl[{i}]  name={name}")
+        print("\nSites:")
+        for i in range(model.nsite):
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_SITE, i)
+            print(f"  site[{i}]  name={name}")
+        print()
+
+
         
         if sim.model is None or sim.data is None:
             print("Error: Failed to initialize MuJoCo. Exiting.")
             return
         
         estimator = DepthEstimator()
-        IK = IKSolver(sim.model, sim.data, LIMITS)
+        IK = IKSolver(sim.model, sim.data, LIMITS, arm_qpos_idx=sim.arm_qpos_idx)
         pd = PDController()
 
         if not sim.launch():
