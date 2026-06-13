@@ -126,7 +126,8 @@ class IKSolver:
         m = self.joint_limit_margin
 
         for j in range(6):
-            lo = self.model.jnt_range[j, 0] + m
-            hi = self.model.jnt_range[j, 1] - m
-
-            self.data.qpos[j] = np.clip(self.data.qpos[j], lo, hi)
+            jid = int(np.where(self.model.jnt_qposadr == self.arm_qpos_idx[j])[0][0])
+            lo = self.model.jnt_range[jid, 0] + m
+            hi = self.model.jnt_range[jid, 1] - m
+            
+            self.data.qpos[self.arm_qpos_idx[j]] = np.clip(self.data.qpos[self.arm_qpos_idx[j]], lo, hi)

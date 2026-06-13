@@ -19,9 +19,9 @@ HAND_EE_SCALE_XY = 0.6
 HAND_EE_SCALE_Z  = 0.4
 
 LIMITS = {
-    "x": (-0.7, 0.7),
-    "y": (-0.7, 0.7),
-    "z": (0.05, 0.9),
+    "x": (-1.0, 1.0),
+    "y": (-1.0, 1.0),
+    "z": (0.05, 1.2),
 }
 
 HAND_STATE = None
@@ -126,6 +126,7 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                     with MUJOCO_LOCK:
                         ref_ee_pos = solver.get_end_effector_pos().copy()
                         pd.reset(ref_ee_pos)
+                    print(f"ARMED — ref_ee_pos={ref_ee_pos}")
 
                 elif gesture == "thumb_down" and armed:
                     armed = False
@@ -166,6 +167,7 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                         delta = pd.compute(current_ee)
                         new_q = solver.solve_incremental(delta)
                         sim.set_joints(new_q)
+                        print(f"delta={delta}  new_q={new_q}") 
             except Exception as e:
                 print(f"Error in control thread: {e}")
                 armed = False
@@ -212,6 +214,7 @@ def main():
         
         estimator = DepthEstimator()
         IK = IKSolver(sim.model, sim.data, LIMITS, arm_qpos_idx=sim.arm_qpos_idx)
+        print("arm_qpos_idx:", sim.arm_qpos_idx)
         pd = PDController()
 
         if not sim.launch():

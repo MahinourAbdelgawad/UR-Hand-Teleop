@@ -29,9 +29,15 @@ class MujocoWrapper:
             # self.data.ctrl[6] = 0 # gripper actuator open
 
             mujoco.mj_forward(self.model, self.data)
-            self.arm_qpos_idx = self.get_arm_joint_indices(self.model)
+            self.arm_qpos_idx = self.get_arm_joint_indices()
 
             # print('DOFs:', self.model.nv, '  Actuators:', self.model.nu)
+
+            default_pose = [0, -np.pi/4, -np.pi/2, -np.pi/4, np.pi/2, 0]
+            for i, qi in enumerate(self.arm_qpos_idx):
+                self.data.qpos[qi] = default_pose[i]
+                self.data.ctrl[i]  = default_pose[i]
+            mujoco.mj_forward(self.model, self.data)
 
 
         except Exception as e:
@@ -182,7 +188,7 @@ class MujocoWrapper:
     def get_qpos(self):
         return self.data.qpos[self.arm_qpos_idx].copy()
     
-    def get_arm_joint_indices(self, prefix="arm_"):
+    def get_arm_joint_indices(self):
         arm_joint_names = [
             "arm_shoulder_pan_joint",
             "arm_shoulder_lift_joint", 
@@ -194,10 +200,10 @@ class MujocoWrapper:
         
         qpos_indices = []
         for name in arm_joint_names:
-            full_name = f"{prefix}{name}"
-            jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, full_name)
+            jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, name)
             if jnt_id == -1:
-                jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, name)
+                bare = name.replace("arm_", "", 1)
+                jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, bare)
             if jnt_id == -1:
                 raise ValueError(f"Could not find joint '{name}' in model")
             
