@@ -2,13 +2,11 @@ import cv2 as cv
 import numpy as np
 import threading
 import time
-import mujoco
 from src.modules.hand_tracker import HandTracker
 from src.modules.mujoco_wrapper import MujocoWrapper
 from src.modules.ik_solver import IKSolver
 from src.modules.depth_estimator import DepthEstimator
 from src.modules.pd_controller import PDController
-from src.modules.scene import Scene
 
 FPS = 30
 CONTROL_RATE = 50
@@ -19,9 +17,9 @@ HAND_EE_SCALE_XY = 0.6
 HAND_EE_SCALE_Z  = 0.4
 
 LIMITS = {
-    "x": (-1.0, 1.0),
-    "y": (-1.0, 1.0),
-    "z": (0.05, 1.2),
+    "x": (-0.7, 0.7),
+    "y": (-0.7, 0.7),
+    "z": (0.05, 0.9),
 }
 
 HAND_STATE = None
@@ -126,7 +124,6 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                     with MUJOCO_LOCK:
                         ref_ee_pos = solver.get_end_effector_pos().copy()
                         pd.reset(ref_ee_pos)
-                    print(f"ARMED — ref_ee_pos={ref_ee_pos}")
 
                 elif gesture == "thumb_down" and armed:
                     armed = False
@@ -167,7 +164,6 @@ def control_thread(tracker, sim, solver, pd, stop_event):
                         delta = pd.compute(current_ee)
                         new_q = solver.solve_incremental(delta)
                         sim.set_joints(new_q)
-                        print(f"delta={delta}  new_q={new_q}") 
             except Exception as e:
                 print(f"Error in control thread: {e}")
                 armed = False
@@ -187,34 +183,14 @@ def control_thread(tracker, sim, solver, pd, stop_event):
 def main():
     try:
         tracker = HandTracker()
-        scene = Scene().build_scene()
-        sim = MujocoWrapper(scene=scene)
-
-        model = sim.model
-        print(f"\nnv={model.nv}  nu={model.nu}  njnt={model.njnt}")
-        print("\nJoints:")
-        for i in range(model.njnt):
-            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
-            print(f"  jnt[{i}]  qposadr={model.jnt_qposadr[i]}  name={name}")
-        print("\nActuators:")
-        for i in range(model.nu):
-            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
-            print(f"  ctrl[{i}]  name={name}")
-        print("\nSites:")
-        for i in range(model.nsite):
-            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_SITE, i)
-            print(f"  site[{i}]  name={name}")
-        print()
-
-
+        sim = MujocoWrapper()
         
         if sim.model is None or sim.data is None:
             print("Error: Failed to initialize MuJoCo. Exiting.")
             return
         
         estimator = DepthEstimator()
-        IK = IKSolver(sim.model, sim.data, LIMITS, arm_qpos_idx=sim.arm_qpos_idx)
-        print("arm_qpos_idx:", sim.arm_qpos_idx)
+        IK = IKSolver(sim.model, sim.data, LIMITS)
         pd = PDController()
 
         if not sim.launch():
