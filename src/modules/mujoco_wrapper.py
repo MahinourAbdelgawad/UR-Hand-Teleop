@@ -3,16 +3,18 @@ import mujoco.viewer
 import numpy as np
 
 class MujocoWrapper:
-    def __init__(self, model = "arm_models/ur5e_model/ur5e.xml", gripper = "arm_models/robotiq_2f85/2f85.xml"):
+    def __init__(self, model = "arm_models/ur5e_model/ur5e.xml", gripper = "arm_models/robotiq_2f85/2f85.xml", scene = None):
         self.model = None
         self.data = None
         self.viewer = None
+        self.site_name = "attachment_site"
         
         try:
             # self.model = mujoco.MjModel.from_xml_path(model)
             self.model = self._build_combined_model(
                 model,
-                gripper
+                gripper,
+                scene
             )
             if self.model is None:
                 raise RuntimeError("Failed to build combined model")
@@ -145,7 +147,7 @@ class MujocoWrapper:
             
         return None
 
-    def _build_combined_model(self, ur5e_path, gripper_path):
+    def _build_combined_model(self, ur5e_path, gripper_path, scene_path):
         arm = mujoco.MjSpec.from_file(ur5e_path)
         gripper = mujoco.MjSpec.from_file(gripper_path)
 
@@ -158,6 +160,9 @@ class MujocoWrapper:
         
         arm.attach(gripper, frame=frame, prefix='gripper_')
 
+        if scene_path is not None:
+            self._merge_scene(arm, scene_path)
+
         return arm.compile()
 
         
@@ -165,3 +170,96 @@ class MujocoWrapper:
         return self.data.qpos[:6].copy()
 
         
+    def _merge_scene(self, arm_spec, scene_path):
+            scene = mujoco.MjSpec.from_file(scene_path)
+    
+            # Copy lights
+            light = scene.worldbody.first_light()
+            while light is not None:
+                arm_spec.worldbody.add_light(
+                    name=light.name,
+                    pos=list(light.pos),
+                    dir=list(light.dir),
+                    diffuse=list(light.diffuse),
+                    specular=list(light.specular),
+                    castshadow=light.castshadow,
+                )
+                light = scene.worldbody.next_light(light)
+    
+            # Copy geoms
+            geom = scene.worldbody.first_geom()
+            while geom is not None:
+                arm_spec.worldbody.add_geom(
+                    name=geom.name,
+                    type=geom.type,
+                    size=list(geom.size),
+                    pos=list(geom.pos),
+                    rgba=list(geom.rgba),
+                    friction=list(geom.friction),
+                )
+                geom = scene.worldbody.next_geom(geom)
+    
+            # Copy bodies
+            body = scene.worldbody.first_body()
+            while body is not None:
+                self._copy_body(arm_spec.worldbody, body)
+                body = scene.worldbody.next_body(body)
+
+
+    def _copy_body(self, parent_spec_body, src_body):
+        new_body = parent_spec_body.add_body(name=src_body.name)
+        new_body.pos = list(src_body.pos)
+        new_body.quat = list(src_body.quat)
+ 
+        # Copy geoms
+        geom = src_body.first_geom()
+        while geom is not None:
+            kwargs = dict(
+                name=geom.name,
+                type=geom.type,
+                size=list(geom.size),
+                pos=list(geom.pos),
+                rgba=list(geom.rgba),
+            )
+            if geom.mass > 0:
+                kwargs["mass"] = geom.mass
+
+            if list(geom.friction) != [0.0, 0.0, 0.0]:
+                kwargs["friction"] = list(geom.friction)
+
+            if geom.contype == 0:
+                kwargs["contype"] = 0
+                kwargs["conaffinity"] = 0
+
+            new_body.add_geom(**kwargs)
+            geom = src_body.next_geom(geom)
+ 
+        joint = src_body.first_joint()
+
+        while joint is not None:
+            if joint.type == mujoco.mjtJoint.mjJNT_FREE:
+                new_body.add_freejoint(name=joint.name)
+
+            joint = src_body.next_joint(joint)
+ 
+        # Recurse into child bodies
+        child = src_body.first_body()
+
+        while child is not None:
+            self._copy_body(new_body, child)
+            child = src_body.next_body(child)
+ 
+    def _find_body(self, parent, name):
+        if parent.name == name:
+            return parent
+        
+        child = parent.first_body()
+
+        while child is not None:
+            found = self._find_body(child, name)
+            if found:
+                return found
+            
+            child = parent.next_body(child)
+            
+        return None

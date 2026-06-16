@@ -183,7 +183,8 @@ def control_thread(tracker, sim, solver, pd, stop_event):
 def main():
     try:
         tracker = HandTracker()
-        sim = MujocoWrapper()
+        # sim = MujocoWrapper()
+        sim = MujocoWrapper(scene="arm_models/scenes/scene1.xml")
         
         if sim.model is None or sim.data is None:
             print("Error: Failed to initialize MuJoCo. Exiting.")
