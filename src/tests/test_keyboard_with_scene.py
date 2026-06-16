@@ -19,6 +19,7 @@ import numpy as np
 from src.modules.mujoco_wrapper import MujocoWrapper
 from src.modules.ik_solver import IKSolver
 from src.modules.pd_controller import PDController
+from src.modules.scene import Scene
 
 
 HOME = np.array([0.3, 0.0, 0.4])  
@@ -117,97 +118,95 @@ def make_hud(target, ee, gripper_closed):
 
 
 def main():
-    global _target, _gripper_closed, _running
-
-    print("=" * 55)
-    print("  Keyboard Pipeline Test")
-    print("  Home position:", HOME)
-    print("=" * 55)
-
-    sim = MujocoWrapper()
-    ik  = IKSolver(
-        sim.model, sim.data,
-        WORKSPACE,
-        site_name="attachment_site",
-        damping=IK_DAMPING,
-        step_size=IK_STEP_SIZE,
-    )
-    print("Init IK solver")
-    pd  = PDController(kp=PD_KP, kd=PD_KD, max_step=PD_MAX_STEP)
-    print("Init pd controller")
-
-    sim.launch()
-    time.sleep(0.5)
-    print("launched sim")
-
-    stop_event = threading.Event()
-    ctrl = threading.Thread(
-        target=control_thread,
-        args=(sim, ik, pd, stop_event),
-        daemon=True,
-        name="ctrl",
-    )
-    ctrl.start()
-    print("started control thread")
-
-
-    # Key → (axis, direction)
-    KEY_MAP = {
-        ord('w'): (1,  1),   # +Y
-        ord('s'): (1, -1),   # -Y
-        ord('a'): (0, -1),   # -X
-        ord('d'): (0,  1),   # +X
-        ord('q'): (2,  1),   # +Z
-        ord('e'): (2, -1),   # -Z
-    }
-
     try:
-        while _running and sim.is_running():
-            # print("in while loop")
-            with _lock:
-                target = _target.copy()
-                gc     = _gripper_closed
+        global _target, _gripper_closed, _running
 
-            # ee  = ik.get_end_effector_pos()
-            ee = _ee_pos.copy()
-            hud = make_hud(target, ee, gc)
+        print("=" * 55)
+        print("Keyboard Pipeline Test")
+        print("Home position:", HOME)
+        print("=" * 55)
 
-            cv.imshow("Keyboard Test", hud)
-            key = cv.waitKey(20) & 0xFF
-            # print("opened cv window")
+        scene = Scene().build_scene()
+        sim = MujocoWrapper(scene=scene)
+        ik = IKSolver(sim.model, sim.data, WORKSPACE, arm_qpos_idx=sim.arm_qpos_idx)
+        print("Init IK solver")
+        pd  = PDController(kp=PD_KP, kd=PD_KD, max_step=PD_MAX_STEP)
+        print("Init pd controller")
 
-            if key == 27:# ESC
-                break
+        sim.launch()
+        time.sleep(0.5)
+        print("launched sim")
 
-            elif key in KEY_MAP:
-                axis, sign = KEY_MAP[key]
+        stop_event = threading.Event()
+        ctrl = threading.Thread(
+            target=control_thread,
+            args=(sim, ik, pd, stop_event),
+            daemon=True,
+            name="ctrl",
+        )
+        ctrl.start()
+        print("started control thread")
+
+
+        KEY_MAP = {
+            ord('w'): (1,  1),
+            ord('s'): (1, -1), 
+            ord('a'): (0, -1),  
+            ord('d'): (0,  1),  
+            ord('q'): (2,  1),
+            ord('e'): (2, -1),  
+        }
+
+        try:
+            while _running and sim.is_running():
+                # print("in while loop")
                 with _lock:
-                    _target[axis] = np.clip(
-                        _target[axis] + sign * STEP,
-                        WORKSPACE[["x","y","z"][axis]][0],
-                        WORKSPACE[["x","y","z"][axis]][1],
-                    )
-                # print(f"  Target → {_target}")
+                    target = _target.copy()
+                    gc     = _gripper_closed
+
+                # ee  = ik.get_end_effector_pos()
+                ee = _ee_pos.copy()
+                hud = make_hud(target, ee, gc)
+
+                cv.imshow("Keyboard Test", hud)
+                key = cv.waitKey(20) & 0xFF
+                # print("opened cv window")
+
+                if key == 27:# ESC
+                    break
+
+                elif key in KEY_MAP:
+                    axis, sign = KEY_MAP[key]
+                    with _lock:
+                        _target[axis] = np.clip(
+                            _target[axis] + sign * STEP,
+                            WORKSPACE[["x","y","z"][axis]][0],
+                            WORKSPACE[["x","y","z"][axis]][1],
+                        )
+                    # print(f"  Target → {_target}")
 
 
-            elif key == ord('g'):
-                with _lock:
-                    _gripper_closed = not _gripper_closed
-                print(f"  Gripper → {'CLOSED' if _gripper_closed else 'OPEN'}")
+                elif key == ord('g'):
+                    with _lock:
+                        _gripper_closed = not _gripper_closed
+                    print(f"  Gripper → {'CLOSED' if _gripper_closed else 'OPEN'}")
 
-            elif key == ord('r'):
-                with _lock:
-                    _target = HOME.copy()
-                pd.reset(ik.get_end_effector_pos())
-                print(f"  Reset → {HOME}")
+                elif key == ord('r'):
+                    with _lock:
+                        _target = HOME.copy()
+                    pd.reset(ik.get_end_effector_pos())
+                    print(f"  Reset → {HOME}")
 
-    finally:
-        print("in finally")
-        stop_event.set()
-        ctrl.join(timeout=2)
-        sim.close()
-        cv.destroyAllWindows()
-        print("\nDone.")
+        finally:
+            print("in finally")
+            stop_event.set()
+            ctrl.join(timeout=2)
+            sim.close()
+            cv.destroyAllWindows()
+            print("\nDone.")
+
+    except Exception as e:
+        print(f"Error running test script: {e}")
 
 
 if __name__ == "__main__":
